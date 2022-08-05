@@ -1,0 +1,93 @@
+name: bupa-azure-policy-assignments
+
+trigger:
+- none
+pr:
+- none
+
+variables:
+  - group: Governance
+  - group: Governance-secret
+  - name: working_directory
+    value: '$(System.DefaultWorkingDirectory)\terratest\example'
+  - name: terratest_directory
+    value: '$(System.DefaultWorkingDirectory)\terratest\test'
+
+pool:
+  name: AZAD01Prod
+  vmImage: 'vs2017-win2016'
+
+stages:
+- stage: terraform_validate_plan
+  jobs:
+  - job: terraform_validate_plan
+    steps:
+    - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@0
+      inputs:
+        terraformVersion: '1.0.0'
+    - task: TerraformCLI@0
+      displayName: 'Terraform Init'
+      inputs:
+        terraformVersion: '1.0.0'
+        command: 'init'
+        workingDirectory: '$(working_directory)'
+        allowTelemetryCollection: false
+    - task: TerraformCLI@0
+      displayName: 'Terraform Validate'
+      inputs:
+        terraformVersion: '1.0.0'
+        command: 'validate'
+        workingDirectory: '$(working_directory)'
+        allowTelemetryCollection: false
+    - task: TerraformCLI@0
+      displayName: 'Terraform Plan'
+      inputs:
+        terraformVersion: '1.0.0'
+        command: 'plan'
+        workingDirectory: '$(working_directory)'
+        environmentServiceName: 'ARM-Governance'
+        allowTelemetryCollection: false
+- stage: terratest
+  condition: contains(variables['build.sourceBranch'], 'main')
+  jobs:
+  - job: terratest
+    steps:
+    - checkout: self
+    - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@0
+      inputs:
+        terraformVersion: '1.0.0'
+    - task: GoTool@0
+      displayName: 'Go - Install'
+      inputs:
+        version: '1.16'
+    - task: Go@0
+      displayName: 'Go - mod init'
+      inputs:
+        command: 'custom'
+        customCommand: 'mod'
+        arguments: 'init test'
+        workingDirectory: '$(terratest_directory)'
+    - task: Go@0
+      displayName: 'Go - Get terratest'
+      inputs:
+        command: 'get'
+        arguments: 'github.com/gruntwork-io/terratest/modules/terraform'
+        workingDirectory: '$(terratest_directory)'
+    - task: Go@0
+      displayName: 'Go - Get assert'
+      inputs:
+        command: 'get'
+        arguments: 'github.com/stretchr/testify/assert'
+        workingDirectory: '$(terratest_directory)'
+    - task: PowerShell@2
+      displayName: 'Go - Test'
+      inputs:
+        targetType: 'inline'
+        script: |
+          cd $(terratest_directory)
+          go test -v
+      env:
+        ARM_CLIENT_ID: $(governance_id)
+        ARM_CLIENT_SECRET: $(CloudGovernanceServicePrincipal)
+        ARM_SUBSCRIPTION_ID: $(subscription_id)
+        ARM_TENANT_ID: $(tenant_id)

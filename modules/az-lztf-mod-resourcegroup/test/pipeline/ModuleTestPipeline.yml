@@ -1,0 +1,43 @@
+# terratest unit test
+name: Unit testing for terraform modules
+
+pool:
+  vmImage: Ubuntu-18.04
+
+trigger: none
+
+## Resources clone setup
+resources:
+  repositories:
+    - repository: Scripts
+      type: bitbucket
+      endpoint: 'Bitbucket - giuseppemuscolo'
+      name: chepdev/azure-image-builder-scripts
+      ref: master
+
+variables:
+- group: AZLZ-Environment
+
+stages:
+- stage: test_tfmodule
+  jobs:
+  - job: test_tfmodule
+    steps:
+    - checkout: Scripts
+    - checkout: self
+
+    - task: Bash@3
+      displayName: Azure authentication
+      inputs:
+        filePath: './azure-image-builder-scripts/bash/auth/configure-azure-auth.sh'
+      env:
+        ARM_CLIENT_ID: $(MANAGEMENT_ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(MANAGEMENT_ARM_CLIENT_SECRET)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+        
+    - template: pipeline-templates/terraform-unit-test.yml@Scripts
+      parameters:
+        test_module: tf-azure-resource-group
+        MANAGEMENT_ARM_CLIENT_ID: $(MANAGEMENT_ARM_CLIENT_ID)
+        MANAGEMENT_ARM_CLIENT_SECRET: $(MANAGEMENT_ARM_CLIENT_SECRET)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
